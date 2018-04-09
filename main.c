@@ -1,6 +1,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <pcap.h>
 #include <libnet.h>
 #include <stdlib.h>
@@ -10,20 +11,36 @@
 #define TIME_OUT    0xFF
 #define MAX_SNAP_LEN  0xFFFF
 #define NP_MODE 0
-#define SIMPLE_SENDER_MAC {sender_mac[0],sender_mac[1],sender_mac[2],sender_mac[3],sender_mac[4],sender_mac[5]}
+#define SIMPLE_LOCALHOST_MAC {localhost_mac[0],localhost_mac[1],localhost_mac[2],localhost_mac[3],localhost_mac[4],localhost_mac[5]}
+
+#define REQ_TARGET_MAC 0x1
+#define REQ_SENDER_MAC 0x2
 
 typedef struct libnet_802_3_hdr ETH;
 typedef struct libnet_arp_hdr ARP;
-
 typedef struct reqMAC{
     ETH eth1;
     ARP arp1;
 }reqMAC;
+typedef struct SHARE_DATA{
+    uint8_t localhostMAC[6];
+    uint8_t senderMAC[6];
+    uint8_t targetMAC[6];
+    uint32_t senderIP;
+    uint32_t targetIP;
+    uint32_t localhostIP;
+}SHD;
 
-
+// ------ static data list ------
+// main thread - read status
+// read thread - write status
 static struct pcap_pkthdr* pktData;
 static uint8_t* readedData;
+static SHD shareData;
+static uint8_t readStatus = 1;
+uint8_t* localhost_mac;
 
+// end
 void* thread_read_packet(char* interface);
 char* get_interface_mac(char *interface);
 char* get_interface_ip(char *interface);
@@ -34,11 +51,9 @@ int main(int argc, char** argv)
 {
     char errBuf[PCAP_ERRBUF_SIZE];
     char* interface;
-    uint8_t* sender_mac;
-    uint32_t sender_ip, target_ip;
     uint8_t* packet;
     pcap_t* pktDescriptor;
-    pthread_t p_thread[2];
+    pthread_t p_thread;
 
     if (argc != 4)
     {
@@ -46,24 +61,32 @@ int main(int argc, char** argv)
           return 1;
     }
     interface = argv[1];
-    sender_mac = str_to_mac(get_interface_mac(interface));
-    sender_ip = str_to_ip(argv[2]);
-    target_ip = str_to_ip(argv[3]);
-    pthread_create(&p_thread[0], 0, thread_read_packet, argv[1]);
+    localhost_mac = str_to_mac(get_interface_mac(interface));
+    shareData.senderIP = str_to_ip(argv[2]);
+    shareData.targetIP = str_to_ip(argv[3]);
+    shareData.localhostIP = str_to_ip(get_interface_ip(interface));
+    pthread_create(&p_thread, 0, thread_read_packet, argv[1]);
 
     reqMAC REQ_PAC = {
         "\xFF\xFF\xFF\xFF\xFF\xFF",
-        SIMPLE_SENDER_MAC,
+        SIMPLE_LOCALHOST_MAC,
         htons(ETHERTYPE_ARP),
         htons(ARPHRD_ETHER),htons(ETHERTYPE_IP),
         6,4,htons(ARPOP_REQUEST),
-        SIMPLE_SENDER_MAC, htonl(str_to_ip(get_interface_ip(interface))),
-        {0,0,0,0,0,0}, htonl(target_ip)
+        SIMPLE_LOCALHOST_MAC, htonl(shareData.localhostIP),
+        {0,0,0,0,0,0}, htonl(shareData.targetIP)
     };
     packet = &REQ_PAC;
     pktDescriptor = pcap_open_live(interface, MAX_SNAP_LEN, NP_MODE, TIME_OUT, NULL);
-    pcap_sendpacket(pktDescriptor, packet, 42);
     do{
+        switch(readStatus)
+        {
+            case REQ_TARGET_MAC:
+                pcap_sendpacket(pktDescriptor, packet, 42);
+            break;
+            default:
+            break;
+        }
         sleep(1);
     }while(1);
 
@@ -73,6 +96,8 @@ int main(int argc, char** argv)
 void* thread_read_packet(char* interface)
 {
     pcap_t* pktDescriptor;
+    ETH* ethHeader;
+    ARP* arpHeader;
     char errBuf[PCAP_ERRBUF_SIZE];
 
     pktDescriptor = pcap_open_live(interface, MAX_SNAP_LEN, NP_MODE, TIME_OUT, NULL);
@@ -81,7 +106,28 @@ void* thread_read_packet(char* interface)
     {
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
-            printf("test");
+            ethHeader = (ETH*)(readedData);
+
+            switch(ntohs(ethHeader->_802_3_len))
+            {
+                case ETHERTYPE_ARP:
+                    arpHeader = (ARP*)(readedData+14);
+                    if (ntohs(arpHeader->ar_op) == ARPOP_REPLY)
+                    {
+                        if (ntohs(arpHeader->senderIP) == shareData.targetIP)
+                        {
+                            memcpy(shareData.targetMAC, arpHeader->senderMAC, 6);
+                        }
+                        if (ntohs(arpHeader->senderIP) == shareData.senderIP)
+                        {
+                            memcpy(shareData.senderMAC, arpHeader->senderMAC, 6);
+                        }
+                    }
+                break;
+            default: // relay
+                //ethHeader->_802_3_dhost =
+                break;
+            }
         }
         sleep(1);
     }
