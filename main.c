@@ -159,9 +159,12 @@ void* thread_read_packet(char* interface)
             {
                 case ETHERTYPE_IP:
                     // Relay, but some think
-                    memcpy(ethHeader->_802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
-                    memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
-                    readStatus = PACKET_RELAY;
+                    if (!memcmp(ethHeader->_802_3_shost, shareData.senderMAC, ETHER_ADDR_LEN))
+                    {
+                        memcpy(ethHeader->_802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
+                        memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
+                        readStatus = PACKET_RELAY;
+                    }
                     break;
                 case ETHERTYPE_ARP:
                     arpHeader = (ARP*)(readedData+sizeof(ethHeader));
