@@ -47,7 +47,7 @@ uint32_t str_to_ip(char* str);
 static struct pcap_pkthdr* pktData;
 static uint8_t* readedData;
 static SHD shareData;
-static uint8_t readStatus = REQ_TARGET_MAC;
+static uint8_t readStatus = REQ_SENDER_MAC;
 uint8_t* localhost_mac;
 // end
 
