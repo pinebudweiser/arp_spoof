@@ -167,7 +167,7 @@ void* thread_read_packet(char* interface)
                     }
                     break;
                 case ETHERTYPE_ARP:
-                    arpHeader = (ARP*)(readedData+sizeof(ethHeader));
+                    arpHeader = (ARP*)(readedData+14);
                     if (ntohs(arpHeader->ar_op) == ARPOP_REPLY)
                     {
                         // Get sender mac
@@ -175,6 +175,7 @@ void* thread_read_packet(char* interface)
                                 (ntohl(arpHeader->dstIP) == shareData.localhostIP))
                         {
                             memcpy(shareData.senderMAC, arpHeader->srcMAC, ETHER_ADDR_LEN);
+                            memcpy(shareData.localhostMAC, arpHeader->dstMAC, ETHER_ADDR_LEN);
                             readStatus = REQ_TARGET_MAC;
                         }
                         // Get target mac
