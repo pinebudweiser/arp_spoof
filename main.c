@@ -1,4 +1,4 @@
-#include <pthread.h>
+﻿#include <pthread.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -20,6 +20,7 @@
 
 typedef struct libnet_802_3_hdr ETH;
 typedef struct libnet_arp_hdr ARP;
+typedef struct libnet_ipv4_hdr IP;
 #pragma pack(push, 1)
 typedef struct ETH_ARP{
     ETH eth1;
@@ -49,6 +50,7 @@ static uint8_t* readedData;
 static SHD shareData;
 static uint8_t readStatus = REQ_SENDER_MAC;
 uint8_t* localhost_mac;
+pthread_mutex_t mutex_lock;
 // end
 
 int main(int argc, char** argv)
@@ -58,6 +60,7 @@ int main(int argc, char** argv)
     uint8_t* packet;
     pcap_t* pktDescriptor;
     pthread_t p_thread;
+    pthread_attr_t p_thread_attr;
 
     if (argc != 4)
     {
@@ -69,7 +72,11 @@ int main(int argc, char** argv)
     shareData.senderIP = str_to_ip(argv[2]);
     shareData.targetIP = str_to_ip(argv[3]);
     shareData.localhostIP = str_to_ip(get_interface_ip(interface));
-    pthread_create(&p_thread, 0, thread_read_packet, argv[1]);
+
+    pthread_mutex_init(&mutex_lock, NULL);
+    pthread_attr_init(&p_thread_attr);
+    pthread_attr_setdetachstate(&p_thread_attr, PTHREAD_CREATE_DETACHED);
+    pthread_create(&p_thread, &p_thread_attr, thread_read_packet, argv[1]); // isloate thread
 
     ETH_ARP reqSender = {
         "\xFF\xFF\xFF\xFF\xFF\xFF",
@@ -127,9 +134,8 @@ int main(int argc, char** argv)
                 pcap_sendpacket(pktDescriptor, readedData, pktData->len);
                 break;
             default:
-            break;
+                break;
         }
-        sleep(1);
     }while(1);
 
     return 0;
@@ -140,6 +146,8 @@ void* thread_read_packet(char* interface)
     pcap_t* pktDescriptor;
     ETH* ethHeader;
     ARP* arpHeader;
+    IP* ipHeader;
+
     char errBuf[PCAP_ERRBUF_SIZE];
 
     pktDescriptor = pcap_open_live(interface, MAX_SNAP_LEN, NP_MODE, TIME_OUT, errBuf);
@@ -150,6 +158,7 @@ void* thread_read_packet(char* interface)
     }
     while(1)
     {
+        pthread_mutex_lock(&mutex_lock);
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
             ethHeader = (ETH*)(readedData);
@@ -158,10 +167,18 @@ void* thread_read_packet(char* interface)
             {
                 case ETHERTYPE_IP:
                     // Relay, but some think
-                    if (!memcmp(ethHeader->_802_3_shost, shareData.senderMAC, ETHER_ADDR_LEN))
+                    ipHeader = (IP*)(readedData+14);
+                    if (!memcmp(ethHeader->_802_3_shost, shareData.senderMAC, ETHER_ADDR_LEN) &&
+                        !memcmp(ethHeader->_802_3_dhost, shareData.localhostMAC, ETHER_ADDR_LEN) &&
+                        (ntohl(ipHeader->ip_src.s_addr) == shareData.senderIP) &&
+                        (ntohl(ipHeader->ip_dst.s_addr) == shareData.localhostIP) )
                     {
                         memcpy(ethHeader->_802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
                         memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
+                        if(readStatus == PACKET_RELAY)
+                        {
+                            readStatus = 7;
+                        }
                         readStatus = PACKET_RELAY;
                     }
                     break;
@@ -205,7 +222,7 @@ void* thread_read_packet(char* interface)
                     break;
             }
         }
-        sleep(1);
+        pthread_mutex_unlock(&mutex_lock);
     }
 }
 
