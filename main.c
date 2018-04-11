@@ -132,6 +132,7 @@ int main(int argc, char** argv)
                 break;
             case PACKET_RELAY:
                 pcap_sendpacket(pktDescriptor, readedData, pktData->len);
+                // TODO Sleep
                 break;
             default:
                 break;
@@ -158,7 +159,6 @@ void* thread_read_packet(char* interface)
     }
     while(1)
     {
-        pthread_mutex_lock(&mutex_lock);
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
             ethHeader = (ETH*)(readedData);
@@ -171,15 +171,12 @@ void* thread_read_packet(char* interface)
                     if (!memcmp(ethHeader->_802_3_shost, shareData.senderMAC, ETHER_ADDR_LEN) &&
                         !memcmp(ethHeader->_802_3_dhost, shareData.localhostMAC, ETHER_ADDR_LEN) &&
                         (ntohl(ipHeader->ip_src.s_addr) == shareData.senderIP) &&
-                        (ntohl(ipHeader->ip_dst.s_addr) == shareData.localhostIP) )
+                        (ntohl(ipHeader->ip_dst.s_addr) != shareData.localhostIP) )
                     {
                         memcpy(ethHeader->_802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
                         memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
-                        if(readStatus == PACKET_RELAY)
-                        {
-                            readStatus = 7;
-                        }
                         readStatus = PACKET_RELAY;
+                        // TODO sleep
                     }
                     break;
                 case ETHERTYPE_ARP:
@@ -222,7 +219,6 @@ void* thread_read_packet(char* interface)
                     break;
             }
         }
-        pthread_mutex_unlock(&mutex_lock);
     }
 }
 
