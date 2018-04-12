@@ -3,6 +3,11 @@ CONFIG += console
 CONFIG -= app_bundle
 CONFIG -= qt
 
-SOURCES += main.c
+SOURCES += main.c \
+    mytools.c
 LIBS += -lpcap
 LIBS += -pthread
+
+HEADERS += \
+    mytools.h \
+    myheader.h
