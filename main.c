@@ -144,7 +144,6 @@ void* thread_arp_processor(char* interface)
     memcpy(repSpoof.arpHeader.dstMAC, shareData.senderMAC, ETHER_ADDR_LEN);
     while(1)
     {
-        pthread_mutex_lock(&myMutex);
         timer += clock();
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
@@ -170,10 +169,9 @@ void* thread_arp_processor(char* interface)
         }
         if (timer >= 3000)
         {
-            timer = 0;
             pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
+            timer = 0;
         }
-        pthread_mutex_unlock(&myMutex);
         sleep(1);
     }
     pcap_close(pktDescriptor);
@@ -193,7 +191,6 @@ void* thread_relay_processor(char* interface)
     }
     while(1)
     {
-        pthread_mutex_lock(&myMutex);
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
             ethHeader = (ETH*)(readedData);
@@ -212,8 +209,7 @@ void* thread_relay_processor(char* interface)
                 }
             }
         }
-        pthread_mutex_unlock(&myMutex);
-        sleep(1);
+        // Don't use sleep, packet send fail.
     }
     pcap_close(pktDescriptor);
 }
