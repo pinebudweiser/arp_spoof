@@ -9,7 +9,7 @@
 #pragma pack(push, 1)
 typedef struct libnet_802_3_hdr ETH;
 typedef struct ARP{
-    struct libnet_arp_hdr arpHeader;
+    struct libnet_arp_hdr libARP;
     uint8_t srcMAC[ETHER_ADDR_LEN];
     uint32_t srcIP;
     uint8_t dstMAC[ETHER_ADDR_LEN];
