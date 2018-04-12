@@ -9,8 +9,6 @@
 #include "mytools.h"
 
 #define SIMPLE_LOCALHOST_MAC {localhost_mac[0],localhost_mac[1],localhost_mac[2],localhost_mac[3],localhost_mac[4],localhost_mac[5]}
-#define SIMPLE_SENDER_MAC {SHD.senderMAC[0],SHD.senderMAC[1],SHD.senderMAC[2],SHD.senderMAC[3],SHD.senderMAC[4],SHD.senderMAC[5]}
-#define SIMPLE_TARGET_MAC {SHD.targetMAC[0],SHD.targetMAC[1],SHD.targetMAC[2],SHD.targetMAC[3],SHD.targetMAC[4],SHD.targetMAC[5]}
 #define NULL_MAC "\x00\x00\x00\x00\x00\x00"
 #define BR_MAC "\xFF\xFF\xFF\xFF\xFF\xFF"
 
@@ -134,14 +132,16 @@ void* thread_arp_processor(char* interface)
         return 1;
     }
     ETH_ARP repSpoof = {
-        SIMPLE_SENDER_MAC,
+        NULL_MAC,
         SIMPLE_LOCALHOST_MAC,
         htons(ETHERTYPE_ARP),
         htons(ARPHRD_ETHER),htons(ETHERTYPE_IP),
         ETHER_ADDR_LEN,NET_IP_LEN,htons(ARPOP_REPLY),
         SIMPLE_LOCALHOST_MAC, htonl(shareData.targetIP),
-        SIMPLE_SENDER_MAC, htonl(shareData.senderIP)
+        NULL_MAC, htonl(shareData.senderIP)
     };
+    memcpy(repSpoof.ethHeader._802_3_dhost, shareData.senderMAC, ETHER_ADDR_LEN);
+    memcpy(repSpoof.arpHeader.dstMAC, shareData.senderMAC, ETHER_ADDR_LEN);
     while(1)
     {
         timer += clock();
