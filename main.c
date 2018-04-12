@@ -109,14 +109,14 @@ int main(int argc, char** argv)
            !memcmp(shareData.targetMAC, NULL_MAC, 6));
     pcap_close(pktDescriptor);
 
-    sleep(2);
     pthread_create(&threadID[0], NULL, thread_arp_processor, interface);
+    sleep(1); // Main thread must be sleep
     pthread_create(&threadID[1], NULL, thread_relay_processor, interface);
     pthread_join(&threadID[0], (void*)&threadStatus);
     pthread_join(&threadID[1], (void*)&threadStatus);
 }
 
-// TODO: Threads has the other pktDescriptor - using Critical section
+// TODO: Threads are has the other pktDescriptor
 
 void* thread_arp_processor(char* interface)
 {
