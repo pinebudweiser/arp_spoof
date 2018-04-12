@@ -225,6 +225,7 @@ void* thread_relay_processor(char* interface)
                     !memcmp(ethHeader->_802_3_dhost, shareData.localhostMAC, ETHER_ADDR_LEN) &&
                     (ntohl(ipHeader->ip_dst.s_addr) == shareData.senderIP) )
                 {
+                    memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
                     memcpy(ethHeader->_802_3_dhost, shareData.senderMAC, ETHER_ADDR_LEN);
                     pcap_sendpacket(pktDescriptor, readedData, pktData->len);
                 }
