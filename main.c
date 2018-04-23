@@ -109,8 +109,9 @@ int main(int argc, char** argv)
     pcap_close(pktDescriptor);
 
     pthread_create(&threadID[0], NULL, thread_arp_processor, interface);
-    sleep(3); // Main thread must be sleep
+    sleep(1); // Main thread must be sleep
     pthread_create(&threadID[1], NULL, thread_relay_processor, interface);
+    sleep(1);
     pthread_join(&threadID[0], (void*)&threadStatus);
     pthread_join(&threadID[1], (void*)&threadStatus);
 }
